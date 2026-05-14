@@ -8,6 +8,18 @@
 
 **Input**: User description: "根据 docs/PRDs/oz-research.md、docs/PRDs/self-built-prd-to-code-agent-pipeline-technical-thinking.md、docs/PRDs/V1_PRD_to_Tasks_技术方案.md 生成 spec"
 
+## Clarifications
+
+### Session 2026-05-14
+
+- Q: Delivery Case 的主流程状态，应该如何与 Artifact、Agent Task、Approval 这些对象的状态建模分离？ → A: Case 使用主流程状态；Artifact、Agent Task、Approval 分别维护独立状态。
+- Q: V1 生成 `tech_design.md` 时，系统应如何获取“相关代码仓库上下文”？ → A: 通过授权仓库集成读取有限范围上下文；不可用时允许人工补充。
+- Q: 当 PRD、技术方案或任务拆解被驳回/要求修改后，既有版本和下游产物应如何处理？ → A: 创建被退回产物的新版本；依赖旧版本的下游产物标记失效并需重新生成/审批。
+- Q: V1 中 Delivery Case、Artifact、审批和 Agent 执行记录的查看权限应该如何限定？ → A: 只有 Case 参与者和 Admin 可查看；操作继续按角色限制。
+- Q: 失败的 Agent Task 重试时，审计记录和输入版本应如何处理？ → A: 每次重试创建新的 Agent Task 记录，并固定引用本次输入 Artifact 版本。
+- Q: SC-001 中 `normal-length PRD` 应定义为多大规模？ → A: 不超过 50,000 个中文字符或等量文本。
+- Q: 每个人工门禁阶段需要几名审批人通过，才能推进到下一阶段？ → A: 每个阶段只需要 1 名指定 Reviewer/Owner 批准。
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - 提交 PRD 并获得质量反馈 (Priority: P1)
@@ -77,11 +89,14 @@ Product Reviewer、Tech Reviewer 和 Developer Owner 分别在对应阶段查看
 - PRD 缺少背景、目标、范围、核心流程或验收标准时，系统必须生成驳回报告并阻止进入下一阶段。
 - PRD 内容前后矛盾、关键依赖不明确或涉及个人信息但未说明用途时，系统必须要求补充后复审。
 - Agent 输出缺失必需章节、格式不可解析或执行失败时，Case 不得自动推进，且必须保留失败记录和重试入口。
+- 失败的 Agent Task 被重试时，系统必须创建新的 Agent Task 记录，并固定记录本次使用的输入 Artifact 版本，原失败记录不得被覆盖。
 - 人工审批缺少意见时，系统不得接受驳回或要求修改操作。
 - 已锁定 Artifact 不得被覆盖；任何修改都必须生成新版本并保留旧版本。
+- PRD、技术方案或任务拆解被驳回或要求修改后，系统必须保留原版本，并将依赖该版本生成的下游产物标记为失效，直到基于新版本重新生成并完成对应审批。
 - 用户或 Agent 尝试跳过人工门禁时，系统必须拒绝状态流转。
 - 技术方案生成所需的仓库上下文不可用或超出可处理范围时，系统必须披露缺失上下文，并将 Case 标记为需要人工处理或重试。
-- 多名审核人同时操作同一审批时，系统必须以当前 Artifact 版本为准，避免旧版本审批误推进新版本。
+- 授权仓库集成无法读取目标仓库、目标分支或限定路径时，系统必须允许授权用户补充人工仓库上下文后重试技术方案生成。
+- 指定审批人在旧页面或重复提交审批操作时，系统必须以当前 Artifact 版本为准，避免旧版本审批误推进新版本。
 - 通知发送失败时，Case 状态和待办记录仍必须准确，且失败应进入可追踪日志。
 
 ## Requirements *(mandatory)*
@@ -95,9 +110,11 @@ Product Reviewer、Tech Reviewer 和 Developer Owner 分别在对应阶段查看
 - **FR-005**: System MUST prevent PRDs with missing acceptance criteria, missing core flow, obvious contradictions, unresolved critical dependencies, or unexplained privacy-sensitive data usage from progressing to human PRD approval.
 - **FR-006**: System MUST route AI-approved PRDs to Product Reviewer approval before locking the PRD version.
 - **FR-007**: System MUST allow authorized human reviewers to approve, reject, or request revision for PRD, technical design, and task planning stages.
+- **FR-007a**: System MUST require exactly one designated reviewer or owner approval per human gate: Product Reviewer for PRD approval, Tech Reviewer for technical design approval, and Developer Owner for task planning approval.
 - **FR-008**: System MUST require a human comment when rejecting an Artifact or requesting revision.
 - **FR-009**: System MUST lock an Artifact only after the required human approval for its stage is granted.
 - **FR-010**: System MUST treat locked Artifacts as immutable; later changes must create a new version rather than overwrite the locked version.
+- **FR-010a**: System MUST mark downstream Artifacts as invalidated when their source PRD, technical design, or task-planning Artifact version is rejected or requires revision; invalidated downstream Artifacts MUST NOT be used to advance the Case until regenerated and re-approved from the new source version.
 - **FR-011**: System MUST generate `tech_design.md` only from a locked PRD and the related PRD review evidence.
 - **FR-012**: System MUST ensure `tech_design.md` covers requirements understanding, non-goals, impact scope, proposed approach, data and state flow, edge cases, compatibility, stability risks, privacy/security impact, test strategy, rollout/rollback considerations, task suggestions, and unresolved questions.
 - **FR-013**: System MUST require Tech Reviewer approval before task planning can begin.
@@ -118,22 +135,26 @@ Product Reviewer、Tech Reviewer 和 Developer Owner 分别在对应阶段查看
 - **FR-028**: System MUST preserve all key Artifacts, approvals, Agent Task records, and transition logs so a completed Case can be audited end to end.
 - **FR-029**: System MUST clearly label cases that are blocked, rejected, awaiting human review, running Agent work, failed, or complete.
 - **FR-030**: System MUST support a constrained first-batch intake policy that accepts only PRDs with clear scope, known owners, available repository context, and testable acceptance criteria.
+- **FR-031**: System MUST model the Delivery Case workflow status separately from Artifact status, Agent Task status, and Approval decision state; Case state transitions MUST reference the relevant object versions without replacing those objects' own statuses.
+- **FR-032**: System MUST obtain code repository context for `tech_design.md` through an authorized repository integration scoped to the target repository, branch, and relevant paths; if that context is unavailable, authorized users MUST be able to provide manual repository context for a retry.
+- **FR-033**: System MUST restrict visibility of Delivery Cases, Artifacts, Approvals, Agent Tasks, and logs to Case participants and Admins; permitted actions MUST remain separately constrained by role-specific authorization.
+- **FR-034**: System MUST create a new Agent Task record for every retry of a failed Agent Task, preserving the prior failed task and binding each retry record to the exact input Artifact versions used for that attempt.
 
 ### Key Entities
 
-- **Delivery Case**: A single demand moving through the PRD-to-Tasks workflow. Key attributes include identifier, title, status, repository context, target branch, owners, creator, current handler, risk indicator, created time, and updated time.
-- **Artifact**: A versioned work product attached to a Delivery Case. Key types are `prd.md`, `prd_review_report.md`, `tech_design.md`, `implementation_plan.md`, `tasks.md`, and `test_plan.md`; each has type, version, status, content, creator type, lock state, and timestamps.
-- **Agent Task**: One AI execution unit. Key attributes include task type, status, input Artifacts, output Artifacts, execution timing, usage/cost summary, logs, and failure reason.
-- **Approval**: A human review decision for a specific stage and Artifact version. Key attributes include reviewer, stage, decision, comment, and timestamp.
-- **State Transition Log**: An audit record for a Case state change. Key attributes include previous status, next status, triggering action, actor, reason, metadata, and timestamp.
-- **Role Assignment**: The mapping between users and allowed workflow actions for a Case or the overall system.
+- **Delivery Case**: A single demand moving through the PRD-to-Tasks workflow. Key attributes include identifier, title, workflow status, repository context, target branch, scoped repository paths, manual repository context when provided, owners, creator, current handler, risk indicator, created time, and updated time.
+- **Artifact**: A versioned work product attached to a Delivery Case. Key types are `prd.md`, `prd_review_report.md`, `tech_design.md`, `implementation_plan.md`, `tasks.md`, and `test_plan.md`; each has type, version, status, content, creator type, lock state, source Artifact version references, invalidation reason when applicable, and timestamps.
+- **Agent Task**: One AI execution unit. Key attributes include task type, status, input Artifact version references, output Artifacts, retry-of relationship when applicable, execution timing, usage/cost summary, logs, and failure reason.
+- **Approval**: A human review decision for a specific stage and Artifact version. Each gate has exactly one designated approver whose approval can advance the Case. Key attributes include reviewer, stage, decision, comment, and timestamp.
+- **State Transition Log**: An audit record for a Delivery Case workflow status change. Key attributes include previous workflow status, next workflow status, triggering action, actor, reason, referenced Artifact/Agent Task/Approval versions, metadata, and timestamp.
+- **Role Assignment**: The mapping between users and allowed workflow actions for a Case or the overall system, including Case participant visibility and Admin-wide visibility.
 - **Review Policy**: The quality criteria used to evaluate PRDs, technical designs, and task plans.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: A Product Submitter can create a Delivery Case and receive a PRD AI Review outcome for a normal-length PRD within 10 minutes.
+- **SC-001**: A Product Submitter can create a Delivery Case and receive a PRD AI Review outcome within 10 minutes for a PRD not exceeding 50,000 Chinese characters or equivalent text.
 - **SC-002**: 100% of test PRDs missing core flow or acceptance criteria are blocked from entering human PRD approval.
 - **SC-003**: 100% of Cases that reach `TASKS_LOCKED` have the six required Artifacts available: `prd.md`, `prd_review_report.md`, `tech_design.md`, `implementation_plan.md`, `tasks.md`, and `test_plan.md`.
 - **SC-004**: 100% of Cases that reach `TASKS_LOCKED` include human approval records for PRD, technical design, and task planning stages.
