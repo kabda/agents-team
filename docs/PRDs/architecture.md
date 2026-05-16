@@ -1,6 +1,5 @@
 # PRD-to-Code Pipeline 架构方案
 
-> 本文件是 agents-team 项目的合并版技术架构方案，取代原 V1/V2/V3 三份分阶段文档与 oz-research 调研三件套。  
 > 总纲与设计原则见 [`self-built-prd-to-code-agent-pipeline-technical-thinking.md`](./self-built-prd-to-code-agent-pipeline-technical-thinking.md)。
 
 ---
@@ -149,7 +148,7 @@ DependencyChange       —— 新增依赖的审批流程
 QuarantinedTest        —— 已知 flaky 测试隔离表（跨 Case）
 ```
 
-**已删除的对象**：原 V1 设计的 `AgentStep` 表已删除。Step-level 溯源由 Claude Code 的 stream-json 输出直接归档到 `artifacts/agent_task_<id>/session.jsonl`，本系统不维护独立 step 表。
+**Step 溯源**：step-level 事件不入 DB，由 Claude Code 的 stream-json 输出直接归档到 `artifacts/agent_task_<id>/session.jsonl`，回放、prompt 审计、step 成本归因全部读这份 jsonl。
 
 ### 8. Delivery Case 状态机
 
@@ -400,7 +399,7 @@ ai-delivery-bundles/                 # 独立 Git 仓库
 │   ├── prd-quality-check/
 │   │   └── v1.0.0/
 │   │       └── SKILL.md
-│   ├── destructive-ops/             # 已存在，迁自 docs/agents-skills/destructive-ops/
+│   ├── destructive-ops/             # 草稿见 docs/agents-skills/destructive-ops/
 │   ├── dependency-policy/
 │   ├── secret-scan/
 │   ├── flaky-test-quarantine/
@@ -557,7 +556,7 @@ license: MIT
 
 每个 skill 是 `.claude/skills/<name>/SKILL.md`，frontmatter + body + 可选资源。沿用 Claude Code skill 标准。
 
-#### 15.1 必装 skill 清单（V1）
+#### 15.1 必装 skill 清单（首批）
 
 | Skill | 装在哪些阶段 | 用途 |
 |---|---|---|
@@ -624,7 +623,7 @@ license: MIT
 
 ### 17. Artifact 模板
 
-V1/V2/V3 已成形的模板（精简后保留）：
+各阶段使用的模板：
 
 | Artifact | 模板路径 | 说明 |
 |---|---|---|
@@ -637,7 +636,7 @@ V1/V2/V3 已成形的模板（精简后保留）：
 | QA Checklist | `templates/qa_checklist.template.md` | 验收/不验收范围、核心场景、回归 |
 | Release Decision | `templates/release_decision.template.md` | 是否可发、灰度策略、回滚条件 |
 
-模板字段细节直接迁自原 V1 §13 / V2 §11 / V3 §10。
+具体字段定义见 `templates/` 目录内对应文件。
 
 ### 18. GitLab / GitHub 集成
 
@@ -865,10 +864,6 @@ CREATE TABLE quarantined_tests (
 );
 ```
 
-#### 19.3 已删除的表
-
-- `agent_steps`：step-level 溯源由 Claude Code 的 stream-json 输出直接归档到 `ai-delivery-artifacts/<case>/agent_task_<id>/session.jsonl`，本系统不再维护。回放、prompt 审计、step 成本归因全部读这份 jsonl。
-
 ### 20. API 最小集
 
 | Method | Path | 说明 |
@@ -890,7 +885,7 @@ CREATE TABLE quarantined_tests (
 
 ## Part G · 治理与安全
 
-> 本节是从 oz-research 三件套抽取的 P0/P1/P2 治理结论。所有项落地为：DB 表（已在 §19）+ skill（`ai-delivery-bundles/skills/`）+ Claude Code hook（Runner Daemon 注入到 worktree 的 `.claude/settings.json`）。
+> 本节列出 P0/P1/P2 治理项。所有项落地为：DB 表（见 §19）+ skill（`ai-delivery-bundles/skills/`）+ Claude Code hook（Runner Daemon 注入到 worktree 的 `.claude/settings.json`）。
 
 ### 21. P0-5：Destructive Operations 双签 + 24h Grace
 
@@ -957,7 +952,7 @@ apps/api/src/privacy/**
 
 被拦截 → coder 必须 route 到 needs_human 流程，禁止自行修改。
 
-### 28. P0-1：Session 归档（替代 step 表）
+### 28. P0-1：Session 归档
 
 - daemon 把 claude stream-json 输出原样写到：
 
@@ -1027,7 +1022,7 @@ wall_clock_seconds = 1800
 
 任一失败 → 拒绝注册。
 
-#### 29.4 未来形态（V2+ 可选）
+#### 29.4 未来形态（后续可选）
 
 - Docker Worker（团队共享机器）：daemon 改为容器化，单容器一个 task
 - CI Runner 适配：把"一次 task"翻译为 GitLab Job，复用现有 runner pool
@@ -1075,8 +1070,6 @@ agents-team/                        # 本仓
 ai-delivery-bundles/                # §12 结构
 ai-delivery-artifacts/              # 各 Delivery Case 的产物归档
 ```
-
-**已删除**：原 V1 设想的 `packages/agent-runtime`、`agents/` 顶层目录（agents 改为 bundle 仓库管理）。
 
 ### 31. MVP 三期分阶段交付
 
@@ -1192,5 +1185,5 @@ ai-delivery-artifacts/              # 各 Delivery Case 的产物归档
 | Bundle 仓库 | 独立 Git 仓库 `ai-delivery-bundles` | 2026-05-16 |
 | Claude 调用模式 | headless `claude -p ... --output-format stream-json` | 2026-05-16 |
 | Daemon 实现语言 | Node.js / TypeScript | 2026-05-16 |
-| 文档形态 | 单份 architecture.md + 一份 thinking.md 总纲；删 V1/V2/V3 + oz-research 三件套 | 2026-05-16 |
-| step 级溯源 | 不建 agent_steps 表，归档 stream-json 到 session.jsonl | 2026-05-16 |
+| 文档形态 | architecture.md（架构） + thinking.md（总纲）双文档结构 | 2026-05-16 |
+| step 级溯源 | 归档 stream-json 到 session.jsonl，不入 DB | 2026-05-16 |

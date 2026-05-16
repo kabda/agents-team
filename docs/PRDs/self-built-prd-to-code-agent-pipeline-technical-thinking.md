@@ -200,7 +200,7 @@ side：ai-delivery-bundles（独立仓库）维护各阶段 sub-agent + skill �
 
 ## 8. PRD 输入规范
 
-产品团队必须按模板提交 PRD，模板见 `templates/prd.template.md`（迁自原 V1）。核心字段：
+产品团队必须按模板提交 PRD，模板见 `templates/prd.template.md`。核心字段：
 
 ```
 1. 背景 / 2. 目标 / 3. 非目标 / 4. 用户故事
@@ -300,7 +300,7 @@ side：ai-delivery-bundles（独立仓库）维护各阶段 sub-agent + skill �
 
 ---
 
-## 12. 主要治理结论（来自 oz-research 三件套）
+## 12. 主要治理结论
 
 | 治理项 | 落地点 |
 |---|---|
@@ -311,7 +311,7 @@ side：ai-delivery-bundles（独立仓库）维护各阶段 sub-agent + skill �
 | Slopsquatting 依赖防御 | `dependency_changes` 表 + 拦截 hook + 人工审批 |
 | Flaky Test Quarantine | `quarantined_tests` 表 + `flaky-test-quarantine` skill |
 | Protected Paths | `protected-paths` skill + PreToolUse hook |
-| Session 归档（替代 step 表） | stream-json → `session.jsonl` 落 Artifact Repo |
+| Session 归档 | stream-json → `session.jsonl` 落 Artifact Repo |
 
 具体 schema、hook 行为、状态机见 [architecture.md §G 治理与安全](./architecture.md#part-g--治理与安全)。
 

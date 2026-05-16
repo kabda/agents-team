@@ -8,8 +8,8 @@ license: MIT
 
 # Destructive Operations Skill
 
-> 这个 Skill 是 v2 调研后引入的核心防御机制（P0-5）。
-> 依据：Replit 2025-07 删库 / PocketOS 2026-04 9 秒删库 / Cursor + Claude Opus 4.6 跨任务删生产库 / Claude Code issue #29120 dry-run 后直接真删。
+> 治理项 P0-5：destructive 操作双签防御机制。
+> 真实事故依据：Replit 2025-07 删库 / PocketOS 2026-04 9 秒删库 / Cursor + Claude Opus 4.6 跨任务删生产库 / Claude Code issue #29120 dry-run 后直接真删。
 
 ## 用途
 
